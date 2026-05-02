@@ -1719,11 +1719,13 @@ and you would be investigating the cause while watching these signals.
 
 ---
 
-## Step 8: Adding Addtional `mem_available` metric
+## Step 8: Adding a Addtional Metric Manually
 
-### Why mem_available May Not Appear in CWAgent
+### Adding `mem_available`
 
-As shown above, `CWAgent` in  `ImageId, InstanceId, InstanceType` namespace shows only `mem_used_percent` metric. To add  `mem_available`, need to do explicit inclusion in the agent config.
+As shown above, `CWAgent` in  `ImageId, InstanceId, InstanceType` namespace shows only `mem_used_percent` metric.`mem_available` is available by default only in Advanced config, but in this demo we just using Basic config where its not included.
+
+To add  `mem_available`, need to do explicit inclusion in the agent config.
 The wizard generates a minimal config that includes `mem_used_percent`
 but may omit `mem_available` as a separate metric stream. This is why
 it does not appear in the namespace browser — it was never collected.
@@ -1785,25 +1787,34 @@ Wait 60 seconds, then verify `mem_available`& `mem_total` now appears in CloudWa
 ## Step 9: Verify Four Golden Signals Are Covered
 
 ```
-┌────────────────┬──────────────────────────────────────────────────┐
-│ Golden Signal  │ What We Are Measuring                            │
-├────────────────┼──────────────────────────────────────────────────┤
-│ LATENCY        │ Not yet — needs application instrumentation       │
-│                │ Demo 06 (X-Ray) and Demo 11 (App Signals)        │
-├────────────────┼──────────────────────────────────────────────────┤
-│ TRAFFIC        │ ✅ NetworkIn, NetworkOut — bytes in/out           │
-│                │ ✅ CPUUtilization as load proxy                   │
-├────────────────┼──────────────────────────────────────────────────┤
-│ ERRORS         │ ✅ StatusCheckFailed — instance health            │
-│                │ ✅ StatusCheckFailed_System — hardware health     │
-├────────────────┼──────────────────────────────────────────────────┤
-│ SATURATION     │ ✅ mem_used_percent (CloudWatch Agent)            │
-│                │ ✅ disk_used_percent (CloudWatch Agent)           │
-│                │ ✅ CPUUtilization at high percentile              │
-└────────────────┴──────────────────────────────────────────────────┘
-
-Coverage: 3/4 signals at infrastructure level ✅
+┌────────────────┬──────────────────────────────────────────────────────┐
+│ Golden Signal  │ What We Are Measuring                                │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ LATENCY        │ ❌ Not covered — needs application instrumentation   │
+│                │ Demo 06 (X-Ray) and Demo 11 (App Signals)            │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ TRAFFIC        │ ✅ CPUUtilization — graphed and stress tested        │
+│                │ ⚠️  NetworkIn, NetworkOut — available in AWS/EC2     │
+│                │    namespace but not graphed in this demo            │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ ERRORS         │ ⚠️  StatusCheckFailed — available automatically      │
+│                │    but not graphed or verified in this demo          │
+│                │    Alarms on StatusCheckFailed → Demo 02             │
+├────────────────┼──────────────────────────────────────────────────────┤
+│ SATURATION     │ ✅ CPUUtilization — graphed and stress tested        │
+│                │ ✅ mem_used_percent — agent configured and graphed   │
+│                │ ✅ disk_used_percent — agent configured and graphed  │
+└────────────────┴──────────────────────────────────────────────────────┘
 ```
+What we actually completed in this demo:
+  ✅ Fully covered: CPUUtilization, mem_used_percent, disk_used_percent
+  ⚠️  Available but not graphed: NetworkIn, NetworkOut, StatusCheckFailed
+  ❌  Not yet covered: Latency (requires application instrumentation)
+
+Full Four Golden Signals coverage builds progressively:
+  Demo 01 → Saturation + Traffic proxy (this demo)
+  Demo 02 → Errors (alarms on StatusCheckFailed)
+  Demo 06 → Latency (X-Ray tracing)
 
 ### Console Verification (High Level)
 
@@ -1833,18 +1844,26 @@ aws cloudwatch get-metric-statistics \
 
 | Component | Free Tier | After Free Tier | This Demo |
 |-----------|-----------|-----------------|-----------|
-| EC2 t3.micro | 750 hrs/month | ~$0.0104/hr | $0 |
-| Detailed CloudWatch monitoring | Not included | $0.01/metric/month | ~$0.10 |
-| CloudWatch metrics (first 10) | 10 free | $0.30/metric/month | $0 |
-| CWAgent metrics (~8 new) | Counted above | Same rate | ~$2.40 |
-| Data ingestion | 5GB/month free | $0.50/GB | $0 |
+| EC2 t3.micro | 750 hrs/month | ~$0.0104/hr | $0 (Free Tier) |
+| EC2 detailed monitoring | Not included | $0.01/metric/month × ~7 metrics | ~$0.07/month |
+| CloudWatch metrics (first 10) | 10 metrics free | $0.30/metric/month | $0 (within free tier) |
+| CWAgent metrics (~10 streams) | Counted in above 10 | $0.30/metric/month | $0 (within free tier) |
+| Data ingestion | 5GB/month free | $0.50/GB | $0 (minimal) |
 
-**Estimated total:** ~$0 within Free Tier; ~$2.50 if CWAgent metrics exceed free tier count.
+**Estimated total for this demo: ~$0.07/month** (only the detailed monitoring charge)
+
+> **Free Tier note:** The 10 free custom metrics covers the CWAgent streams
+> collected in this demo (Basic preset = ~8 streams, Advanced = ~10+ streams).
+> Once you exceed 10 custom metric streams across your account, the
+> $0.30/metric/month rate applies. The EC2 detailed monitoring charge
+> ($0.01/metric/month) is separate — it applies to the AWS/EC2 namespace
+> metrics and is not covered by the custom metrics free tier.
 
 **Cost optimization:**
 - Stop EC2 when not in use — billed per running hour
-- Switch to basic (5-min) monitoring on non-critical instances
-- Use CloudWatch VPC Endpoint in production — eliminates NAT Gateway charges for metric traffic
+- Switch back to basic (5-min) monitoring on non-critical instances to eliminate the $0.07/month detailed monitoring charge
+- Use CloudWatch VPC Endpoint in production — eliminates NAT Gateway data charges for metric traffic
+- Stay within 10 CWAgent metric streams to remain in Free Tier during learning
 
 ---
 
